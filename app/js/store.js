@@ -70,6 +70,28 @@ export function exportState(state) {
   URL.revokeObjectURL(url);
 }
 
+// Counts for the audit view's "your progress" line: earned total plus a
+// per-grade breakdown, computed from the same state the checklist uses.
+export function progressSummary(state, trophies) {
+  const byGrade = {};
+  for (const t of trophies) {
+    byGrade[t.grade] = byGrade[t.grade] || { got: 0, total: 0 };
+    byGrade[t.grade].total += 1;
+    if (state.earned.includes(t.id)) byGrade[t.grade].got += 1;
+  }
+  return { earned: state.earned.length, total: trophies.length, byGrade };
+}
+
+// Clears earned ticks, counters and notes but keeps the settings, so a
+// fresh playthrough starts clean without losing spoiler/theme choices.
+export function resetProgress(state) {
+  state.earned = [];
+  state.counters = {};
+  state.notes = {};
+  saveState(state);
+  return state;
+}
+
 export function validateImported(value) {
   if (!value || typeof value !== 'object') return false;
   if (!Array.isArray(value.earned)) return false;

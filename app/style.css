@@ -53,7 +53,26 @@ nav.tabs a.active{background:var(--accent);border-color:var(--accent);color:#fff
 .medal.silver{background:var(--silver)} .medal.bronze{background:var(--bronze)}
 .pill{padding:2px 8px;border-radius:999px;background:var(--surface2);border:1px solid var(--line);font-weight:600}
 .pill.miss{background:#b42318;color:#fff;border-color:#b42318}
+.pill.risk{background:#7a3b00;color:#fff;border-color:#7a3b00;white-space:nowrap}
 .pill.kind{background:var(--accent-soft);border-color:transparent;color:var(--accent)}
+.verify{font-size:13px;color:var(--good);border-top:1px solid var(--line);padding-top:8px}
+.platinum-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px;box-shadow:var(--shadow)}
+.platinum-card h2{margin:0 0 10px;font-size:21px}
+.platinum-card p{margin:10px 0 0;color:var(--muted)}
+.fact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.fact{background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+.fact-label{display:block;font-size:12px;color:var(--muted)}
+.fact strong{display:block;font-size:16px;margin:2px 0}
+.fact-source{font-size:12px;color:var(--muted)}
+.audit-intro{margin-bottom:14px}
+.audit-intro h2{margin:0 0 4px;font-size:24px}
+.audit-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:14px;box-shadow:var(--shadow)}
+.audit-card h2{margin:0 0 8px;font-size:20px}
+.audit-card ul{margin:0;padding-left:22px}
+.audit-card li{margin:5px 0;font-size:15px}
+.audit-card .sources{font-size:14px}
+.miss-note.confirmed{border-color:#7a3b00;background:#fdf0e0}
+html[data-theme="dark"] .miss-note.confirmed{background:#2e2113}
 .rarity{color:var(--muted)}
 .counter{display:flex;gap:6px;align-items:center;margin-top:8px}
 .counter button{width:28px;height:28px;border:1px solid var(--line);border-radius:7px;background:var(--surface2);color:var(--text);font-size:16px;cursor:pointer}

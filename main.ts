@@ -29,3 +29,17 @@ const dossierText = readFileSync(join(out, 'dossier.json'), 'utf8');
 if (dossierText.trim().length === 0) throw new Error('dossier.json came out empty');
 const dossierJson = JSON.parse(dossierText);
 if (!dossierJson || typeof dossierJson !== 'object') throw new Error('dossier.json is not valid JSON');
+
+// My own check, round 2: the trophy file must hold all 55 trophies, each
+// with a non-blank guide and at least 9 cited sources, and exactly the
+// 4 screenshots the dossier was built from — otherwise the build fails
+// here instead of shipping a thinner guide than round 1.
+const trophyData = JSON.parse(readFileSync(join(here, 'app', 'data', 'trophies.json'), 'utf8'));
+const trophyList = Array.isArray(trophyData) ? trophyData : trophyData.trophies;
+if (!Array.isArray(trophyList) || trophyList.length !== 55) throw new Error('trophies.json must hold 55 trophies');
+for (const t of trophyList) {
+  if (!t.guide || !String(t.guide).trim()) throw new Error('trophy ' + t.id + ' has a blank guide');
+  if (!Array.isArray(t.sources) || t.sources.length < 9) throw new Error('trophy ' + t.id + ' has fewer than 9 sources');
+}
+const shotCount = Number(dossierJson?.images?.length ?? 0);
+if (shotCount !== 4) throw new Error('expected 4 screenshots, dossier holds ' + shotCount);
