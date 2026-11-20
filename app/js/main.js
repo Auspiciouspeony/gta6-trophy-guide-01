@@ -1,189 +1,211 @@
 // Boot, hash routing (#/checklist, #/roadmap, #/missables, #/planner,
-// #/settings, #/audit) and wiring of every control. No network at run
-// time beyond loading the local data file.
-import { loadTrophies, loadAudit, KINDS } from './data.js';
-import { loadState, saveState, toggleEarned, setCounter, setNote, exportState, importStateText, isEarned, applyDemoParams, resetProgress } from './store.js';
+// #/settings, #/audit) and wiring for every control. The app works
+// offline; the only fetch at run time is the local trophy data file.
+import { fetchTrophyList, fetchAuditBlock, KIND_FILTERS } from './data.js';
+import { readState, writeState, flipEarned, setCounterAmount, saveNote, downloadProgress, loadProgressText, hasEarned, seedDemo, wipeProgress } from './store.js';
 import { renderChecklist, renderRoadmap, renderMissables, renderPlanner, renderSettings, renderAudit } from './views.js';
+
+const VIEWS = ['checklist', 'roadmap', 'missables', 'planner', 'settings', 'audit'];
 
 let trophies = [];
 let audit = null;
-let state = loadState();
-let selectedId = 2;
-let kind = 'all';
-let query = '';
-let grade = 'all';
+let state = readState();
+let pickedId = 2;
+let activeKind = 'all';
+let searchText = '';
+let activeGrade = 'all';
 
-const viewEl = document.getElementById('view');
+const viewRoot = document.getElementById('view');
 
-function currentView() {
+function pickView() {
   const hash = location.hash.replace(/^#\/?/, '');
   const params = new URLSearchParams(location.search);
   const shot = params.get('view') || params.get('shot');
-  const name = ['checklist', 'roadmap', 'missables', 'planner', 'settings', 'audit'].includes(hash) ? hash : 'checklist';
-  if (shot && ['checklist', 'roadmap', 'missables', 'planner', 'settings', 'audit'].includes(shot)) return shot;
-  return name;
+  if (shot && VIEWS.includes(shot)) return shot;
+  return VIEWS.includes(hash) ? hash : 'checklist';
 }
 
-function updateHeader() {
+function paintHeader() {
   const earned = state.earned.length;
   document.getElementById('progressText').textContent = earned + ' / ' + trophies.length + ' earned';
   document.getElementById('progressBar').style.width = (trophies.length ? Math.round((earned / trophies.length) * 100) : 0) + '%';
-  const counts = ['platinum', 'gold', 'silver', 'bronze'].map((g) => {
-    const total = trophies.filter((t) => t.grade === g).length;
-    const got = trophies.filter((t) => t.grade === g && isEarned(state, t.id)).length;
-    return '<b>' + got + '/' + total + '</b> ' + g;
+  const counts = ['platinum', 'gold', 'silver', 'bronze'].map((grade) => {
+    const total = trophies.filter((trophy) => trophy.grade === grade).length;
+    const got = trophies.filter((trophy) => trophy.grade === grade && hasEarned(state, trophy.id)).length;
+    return '<b>' + got + '/' + total + '</b> ' + grade;
   }).join(' · ');
   document.getElementById('gradeCounts').innerHTML = counts;
   document.getElementById('spoilerToggle').checked = state.settings.spoiler;
   document.getElementById('hideEarnedToggle').checked = state.settings.hideEarned;
   document.getElementById('themeToggle').textContent = state.settings.theme === 'dark' ? 'Day theme' : 'Night theme';
-  document.getElementById('gradeFilter').value = grade;
-  document.getElementById('search').value = query;
+  document.getElementById('gradeFilter').value = activeGrade;
+  document.getElementById('search').value = searchText;
   document.documentElement.setAttribute('data-theme', state.settings.theme);
-  document.querySelectorAll('#tabs a').forEach((a) => {
-    a.classList.toggle('active', a.dataset.view === currentView());
+  document.querySelectorAll('#tabs a').forEach((link) => {
+    link.classList.toggle('active', link.dataset.view === pickView());
   });
-  document.querySelectorAll('#kindChips .chip').forEach((c) => {
-    c.classList.toggle('active', c.dataset.kind === kind);
+  document.querySelectorAll('#kindChips .chip').forEach((chip) => {
+    chip.classList.toggle('active', chip.dataset.kind === activeKind);
   });
-  document.getElementById('toolbar').style.display = currentView() === 'checklist' ? '' : 'none';
+  document.getElementById('toolbar').style.display = pickView() === 'checklist' ? '' : 'none';
 }
 
-function render() {
-  updateHeader();
-  const view = currentView();
-  if (view === 'roadmap') viewEl.innerHTML = renderRoadmap(state, trophies);
-  else if (view === 'missables') viewEl.innerHTML = renderMissables(state, trophies);
-  else if (view === 'planner') viewEl.innerHTML = renderPlanner(state, trophies);
-  else if (view === 'settings') viewEl.innerHTML = renderSettings(state, trophies);
-  else if (view === 'audit') viewEl.innerHTML = renderAudit(state, trophies, audit);
-  else viewEl.innerHTML = renderChecklist(state, trophies, { kind, query, grade }, selectedId);
-  bindView();
+function paint() {
+  paintHeader();
+  const view = pickView();
+  if (view === 'roadmap') viewRoot.innerHTML = renderRoadmap(state, trophies);
+  else if (view === 'missables') viewRoot.innerHTML = renderMissables(state, trophies);
+  else if (view === 'planner') viewRoot.innerHTML = renderPlanner(state, trophies);
+  else if (view === 'settings') viewRoot.innerHTML = renderSettings(state, trophies);
+  else if (view === 'audit') viewRoot.innerHTML = renderAudit(state, trophies, audit);
+  else viewRoot.innerHTML = renderChecklist(state, trophies, { kind: activeKind, query: searchText, grade: activeGrade }, pickedId);
+  wireView();
 }
 
-function bindView() {
-  viewEl.querySelectorAll('[data-earned]').forEach((box) => {
+function wireView() {
+  viewRoot.querySelectorAll('[data-earned]').forEach((box) => {
     box.addEventListener('click', (event) => {
       event.stopPropagation();
-      toggleEarned(state, Number(box.dataset.earned));
-      render();
+      flipEarned(state, Number(box.dataset.earned));
+      paint();
     });
   });
-  viewEl.querySelectorAll('[data-open]').forEach((row) => {
+  viewRoot.querySelectorAll('[data-open]').forEach((row) => {
     row.addEventListener('click', (event) => {
       if (event.target.closest('[data-counter]') || event.target.closest('[data-earned]') || event.target.closest('textarea')) return;
-      selectedId = Number(row.dataset.open);
-      render();
+      pickedId = Number(row.dataset.open);
+      paint();
     });
     row.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
-        selectedId = Number(row.dataset.open);
-        render();
+        pickedId = Number(row.dataset.open);
+        paint();
       }
     });
   });
-  viewEl.querySelectorAll('[data-counter]').forEach((btn) => {
-    btn.addEventListener('click', (event) => {
+  viewRoot.querySelectorAll('[data-counter]').forEach((button) => {
+    button.addEventListener('click', (event) => {
       event.stopPropagation();
-      const trophy = trophies.find((t) => t.id === Number(btn.dataset.id));
+      const trophy = trophies.find((t) => t.id === Number(button.dataset.id));
       if (!trophy) return;
-      const current = state.counters[trophy.id] || 0;
-      setCounter(state, trophy, current + Number(btn.dataset.counter));
-      render();
+      const now = state.counters[trophy.id] || 0;
+      setCounterAmount(state, trophy, now + Number(button.dataset.counter));
+      paint();
     });
   });
-  viewEl.querySelectorAll('[data-note]').forEach((area) => {
+  viewRoot.querySelectorAll('[data-note]').forEach((area) => {
     area.addEventListener('change', () => {
-      setNote(state, Number(area.dataset.note), area.value);
+      saveNote(state, Number(area.dataset.note), area.value);
     });
+  });
+  // Detail pane: mark earned without hunting for the checkbox, and step
+  // to the next guide in trophy order.
+  viewRoot.querySelectorAll('[data-earned-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      flipEarned(state, Number(button.dataset.earnedToggle));
+      paint();
+    });
+  });
+  viewRoot.querySelectorAll('[data-next-guide]').forEach((button) => {
+    button.addEventListener('click', () => {
+      pickedId = Number(button.dataset.nextGuide);
+      paint();
+    });
+  });
+  const clearBtn = viewRoot.querySelector('[data-clear-filters]');
+  if (clearBtn) clearBtn.addEventListener('click', () => {
+    activeKind = 'all';
+    activeGrade = 'all';
+    searchText = '';
+    paint();
   });
   const settingsExport = document.getElementById('settingsExport');
-  if (settingsExport) settingsExport.addEventListener('click', () => exportState(state));
+  if (settingsExport) settingsExport.addEventListener('click', () => downloadProgress(state));
   const settingsReset = document.getElementById('settingsReset');
   if (settingsReset) settingsReset.addEventListener('click', () => {
     if (!confirm('Reset all earned ticks, counters and notes? Settings are kept.')) return;
-    state = resetProgress(state);
-    render();
+    state = wipeProgress(state);
+    paint();
   });
   const settingsSpoiler = document.getElementById('settingsSpoiler');
   if (settingsSpoiler) settingsSpoiler.addEventListener('change', () => {
     state.settings.spoiler = settingsSpoiler.checked;
-    saveState(state);
-    render();
+    writeState(state);
+    paint();
   });
   const settingsHide = document.getElementById('settingsHideEarned');
   if (settingsHide) settingsHide.addEventListener('change', () => {
     state.settings.hideEarned = settingsHide.checked;
-    saveState(state);
-    render();
+    writeState(state);
+    paint();
   });
   const settingsTheme = document.getElementById('settingsTheme');
   if (settingsTheme) settingsTheme.addEventListener('change', () => {
     state.settings.theme = settingsTheme.checked ? 'dark' : 'light';
-    saveState(state);
-    render();
+    writeState(state);
+    paint();
   });
 }
 
-function initControls() {
+function wireControls() {
   const chips = document.getElementById('kindChips');
-  chips.innerHTML = KINDS.map((k) => '<button type="button" class="chip" data-kind="' + k.key + '">' + k.label + '</button>').join('');
+  chips.innerHTML = KIND_FILTERS.map((entry) => '<button type="button" class="chip" data-kind="' + entry.key + '">' + entry.label + '</button>').join('');
   chips.querySelectorAll('.chip').forEach((chip) => {
     chip.addEventListener('click', () => {
-      kind = chip.dataset.kind;
-      if (currentView() !== 'checklist') location.hash = '#/checklist';
-      render();
+      activeKind = chip.dataset.kind;
+      if (pickView() !== 'checklist') location.hash = '#/checklist';
+      paint();
     });
   });
   document.getElementById('search').addEventListener('input', (event) => {
-    query = event.target.value;
-    render();
+    searchText = event.target.value;
+    paint();
   });
   document.getElementById('gradeFilter').addEventListener('change', (event) => {
-    grade = event.target.value;
-    render();
+    activeGrade = event.target.value;
+    paint();
   });
   document.getElementById('spoilerToggle').addEventListener('change', (event) => {
     state.settings.spoiler = event.target.checked;
-    saveState(state);
-    render();
+    writeState(state);
+    paint();
   });
   document.getElementById('hideEarnedToggle').addEventListener('change', (event) => {
     state.settings.hideEarned = event.target.checked;
-    saveState(state);
-    render();
+    writeState(state);
+    paint();
   });
   document.getElementById('themeToggle').addEventListener('click', () => {
     state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark';
-    saveState(state);
-    render();
+    writeState(state);
+    paint();
   });
-  document.getElementById('exportBtn').addEventListener('click', () => exportState(state));
+  document.getElementById('exportBtn').addEventListener('click', () => downloadProgress(state));
   document.getElementById('importFile').addEventListener('change', async (event) => {
     const file = event.target.files[0];
     if (!file) return;
     try {
-      state = importStateText(await file.text());
-      render();
+      state = loadProgressText(await file.text());
+      paint();
     } catch (error) {
       alert(error.message);
     }
     event.target.value = '';
   });
-  window.addEventListener('hashchange', render);
+  window.addEventListener('hashchange', paint);
 }
 
-loadTrophies().then((list) => {
+fetchTrophyList().then((list) => {
   trophies = list;
-  state = applyDemoParams(state, trophies);
-  // Deep-link a trophy for screenshots and sharing: ?trophy=28 selects
-  // it in the detail pane (spoiler mode still hides un-earned story ones).
+  state = seedDemo(state, trophies);
+  // Deep-link one trophy for screenshots and sharing: ?trophy=28 opens
+  // it in the guide pane (spoiler mode still hides un-earned story ones).
   const wanted = Number(new URLSearchParams(location.search).get('trophy') || '');
-  if (Number.isInteger(wanted) && trophies.some((t) => t.id === wanted)) selectedId = wanted;
-  return loadAudit().then((a) => { audit = a; }).catch(() => { audit = null; });
+  if (Number.isInteger(wanted) && trophies.some((trophy) => trophy.id === wanted)) pickedId = wanted;
+  return fetchAuditBlock().then((block) => { audit = block; }).catch(() => { audit = null; });
 }).then(() => {
-  initControls();
-  render();
+  wireControls();
+  paint();
 }).catch((error) => {
-  viewEl.innerHTML = '<div class="empty-state">Could not load the trophy list: ' + error.message + '</div>';
+  viewRoot.innerHTML = '<div class="empty">Could not load the trophy list: ' + error.message + '</div>';
 });

@@ -1,38 +1,42 @@
-// Filtering logic: kind chips, grade, search text and spoiler hiding.
-export function isHiddenBySpoiler(state, trophy) {
+// Filtering rules: kind chips, grade, search text and spoiler hiding.
+// Kept apart from rendering so the checklist, planner and missables
+// views all filter the same way.
+
+// Spoiler mode hides a story trophy until it is earned.
+export function spoilerHides(state, trophy) {
   return state.settings.spoiler && trophy.kind === 'story' && !state.earned.includes(trophy.id);
 }
 
-// How much a missable flag can be trusted. Only one trophy is confirmed
-// missable by the published guides (Positive Mental Attitude, whose first
-// meditation sits in Chapter 1); the story trophies are flagged because
-// they are tied to chapters and missions, not because they can be skipped.
-export function missableRisk(trophy) {
-  if (trophy.risk === 'confirmed-missable') return 'confirmed-missable';
-  if (trophy.missable) return 'story-locked';
-  return 'none';
+// How much the missable flag means. The published guides confirm only
+// one trophy as truly missable (Positive Mental Attitude, first
+// meditation in Chapter 1). The story trophies are flagged because they
+// belong to chapters and missions, not because they can be skipped.
+export function riskLevel(trophy) {
+  if (trophy.risk === 'confirmed-missable') return 'confirmed';
+  if (trophy.missable) return 'story';
+  return 'open';
 }
 
-export function filterTrophies(state, trophies, opts) {
-  const query = (opts.query || '').trim().toLowerCase();
+export function applyFilters(state, trophies, opts) {
+  const needle = (opts.query || '').trim().toLowerCase();
   const kind = opts.kind || 'all';
   const grade = opts.grade || 'all';
-  return trophies.filter((t) => {
-    if (kind === 'missable' && !t.missable) return false;
+  return trophies.filter((trophy) => {
+    if (kind === 'missable' && !trophy.missable) return false;
     if (kind === 'online') return false;
-    if (kind !== 'all' && kind !== 'missable' && t.kind !== kind) return false;
-    if (grade !== 'all' && t.grade !== grade) return false;
-    if (state.settings.hideEarned && state.earned.includes(t.id)) return false;
-    if (query) {
-      const hay = (t.name + ' ' + t.description + ' ' + t.guide + ' ' + (t.steps || []).join(' ')).toLowerCase();
-      if (!hay.includes(query)) return false;
+    if (kind !== 'all' && kind !== 'missable' && trophy.kind !== kind) return false;
+    if (grade !== 'all' && trophy.grade !== grade) return false;
+    if (state.settings.hideEarned && state.earned.includes(trophy.id)) return false;
+    if (needle) {
+      const haystack = (trophy.name + ' ' + trophy.description + ' ' + trophy.guide + ' ' + (trophy.steps || []).join(' ')).toLowerCase();
+      if (!haystack.includes(needle)) return false;
     }
     return true;
   });
 }
 
-export function nextUpList(state, trophies, count) {
-  const open = trophies.filter((t) => !state.earned.includes(t.id));
+export function upcomingTrophies(state, trophies, count) {
+  const open = trophies.filter((trophy) => !state.earned.includes(trophy.id));
   open.sort((a, b) => {
     if (a.stage !== b.stage) return a.stage - b.stage;
     return parseFloat(b.rarity) - parseFloat(a.rarity);
@@ -40,7 +44,7 @@ export function nextUpList(state, trophies, count) {
   return open.slice(0, count);
 }
 
-export function whyNow(trophy) {
+export function reasonToDoNow(trophy) {
   if (trophy.risk === 'confirmed-missable') return 'CONFIRMED MISSABLE — the Chapter 1 meditation passes by; do it now.';
   if (trophy.missable) return 'Story-locked — do it while the story is open, before it passes.';
   if (trophy.stage === 1) return 'Story beat — it comes next in the campaign order.';

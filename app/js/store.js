@@ -1,8 +1,8 @@
-// Progress store: earned set, per-trophy counters, notes and settings,
-// saved to localStorage and exportable/importable as a JSON file.
+// Progress store: earned ticks, per-trophy counters, notes and
+// settings, saved to localStorage and exportable as a JSON file.
 const KEY = 'platinum-road-v1';
 
-export function defaultState() {
+export function freshState() {
   return {
     earned: [],
     counters: {},
@@ -11,13 +11,13 @@ export function defaultState() {
   };
 }
 
-export function loadState() {
+export function readState() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return defaultState();
+    if (!raw) return freshState();
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return defaultState();
-    const base = defaultState();
+    if (!parsed || typeof parsed !== 'object') return freshState();
+    const base = freshState();
     return {
       earned: Array.isArray(parsed.earned) ? parsed.earned.filter(Number.isInteger) : base.earned,
       counters: parsed.counters && typeof parsed.counters === 'object' ? parsed.counters : base.counters,
@@ -25,74 +25,74 @@ export function loadState() {
       settings: { ...base.settings, ...(parsed.settings || {}) },
     };
   } catch {
-    return defaultState();
+    return freshState();
   }
 }
 
-export function saveState(state) {
+export function writeState(state) {
   localStorage.setItem(KEY, JSON.stringify(state));
 }
 
-export function isEarned(state, id) {
+export function hasEarned(state, id) {
   return state.earned.includes(id);
 }
 
-export function toggleEarned(state, id) {
-  const i = state.earned.indexOf(id);
-  if (i === -1) state.earned.push(id);
-  else state.earned.splice(i, 1);
-  saveState(state);
+export function flipEarned(state, id) {
+  const at = state.earned.indexOf(id);
+  if (at === -1) state.earned.push(id);
+  else state.earned.splice(at, 1);
+  writeState(state);
 }
 
-export function counterValue(state, trophy) {
+export function counterOf(state, trophy) {
   return state.counters[trophy.id] || 0;
 }
 
-export function setCounter(state, trophy, value) {
+export function setCounterAmount(state, trophy, value) {
   const clamped = Math.max(0, Math.min(trophy.target || 0, value));
   state.counters[trophy.id] = clamped;
-  saveState(state);
+  writeState(state);
 }
 
-export function setNote(state, id, text) {
+export function saveNote(state, id, text) {
   if (text.trim()) state.notes[id] = text;
   else delete state.notes[id];
-  saveState(state);
+  writeState(state);
 }
 
-export function exportState(state) {
+export function downloadProgress(state) {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'platinum-road-progress.json';
-  a.click();
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'platinum-road-progress.json';
+  link.click();
   URL.revokeObjectURL(url);
 }
 
-// Counts for the audit view's "your progress" line: earned total plus a
-// per-grade breakdown, computed from the same state the checklist uses.
-export function progressSummary(state, trophies) {
+// Totals for the audit page's "your progress" line: earned count plus a
+// per-grade breakdown, read from the same state the checklist uses.
+export function progressTotals(state, trophies) {
   const byGrade = {};
-  for (const t of trophies) {
-    byGrade[t.grade] = byGrade[t.grade] || { got: 0, total: 0 };
-    byGrade[t.grade].total += 1;
-    if (state.earned.includes(t.id)) byGrade[t.grade].got += 1;
+  for (const trophy of trophies) {
+    byGrade[trophy.grade] = byGrade[trophy.grade] || { got: 0, total: 0 };
+    byGrade[trophy.grade].total += 1;
+    if (state.earned.includes(trophy.id)) byGrade[trophy.grade].got += 1;
   }
   return { earned: state.earned.length, total: trophies.length, byGrade };
 }
 
-// Clears earned ticks, counters and notes but keeps the settings, so a
+// Wipes earned ticks, counters and notes but keeps the settings, so a
 // fresh playthrough starts clean without losing spoiler/theme choices.
-export function resetProgress(state) {
+export function wipeProgress(state) {
   state.earned = [];
   state.counters = {};
   state.notes = {};
-  saveState(state);
+  writeState(state);
   return state;
 }
 
-export function validateImported(value) {
+export function validExport(value) {
   if (!value || typeof value !== 'object') return false;
   if (!Array.isArray(value.earned)) return false;
   if (value.counters !== undefined && (typeof value.counters !== 'object' || value.counters === null)) return false;
@@ -101,27 +101,26 @@ export function validateImported(value) {
   return true;
 }
 
-export function importStateText(text) {
+export function loadProgressText(text) {
   const parsed = JSON.parse(text);
-  if (!validateImported(parsed)) throw new Error('That file is not a Platinum Road progress export.');
-  const state = defaultState();
+  if (!validExport(parsed)) throw new Error('That file is not a Platinum Road progress export.');
+  const state = freshState();
   state.earned = parsed.earned.filter(Number.isInteger);
   state.counters = parsed.counters || {};
   state.notes = parsed.notes || {};
   state.settings = { ...state.settings, ...(parsed.settings || {}) };
-  saveState(state);
+  writeState(state);
   return state;
 }
 
-// Screenshot helper only: seeds demo progress from URL query params
-// (?demo=1&earned=13&spoiler=on) before the first render. Real behaviour
-// is untouched when the params are absent.
-export function applyDemoParams(state, trophies) {
+// Screenshot helper only: seeds demo progress from the query string
+// (?demo=1&earned=13&spoiler=on) before the first render. Real use is
+// untouched when the params are absent.
+export function seedDemo(state, trophies) {
   const params = new URLSearchParams(location.search);
   if (params.get('demo') !== '1') return state;
   const wanted = parseInt(params.get('earned') || '13', 10);
-  const seed = trophies.slice(0, wanted).map((t) => t.id);
-  state.earned = seed;
+  state.earned = trophies.slice(0, wanted).map((trophy) => trophy.id);
   const partWay = { 15: 120, 17: 20, 25: 4, 28: 9, 31: 40, 35: 30, 52: 100000, 53: 45000 };
   for (const [id, value] of Object.entries(partWay)) {
     const trophy = trophies.find((t) => t.id === Number(id));
@@ -129,6 +128,6 @@ export function applyDemoParams(state, trophies) {
   }
   if (params.get('spoiler') === 'on') state.settings.spoiler = true;
   if (params.get('spoiler') === 'off') state.settings.spoiler = false;
-  saveState(state);
+  writeState(state);
   return state;
 }
